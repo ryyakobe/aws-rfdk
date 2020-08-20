@@ -11,7 +11,7 @@ export DEADLINE_STAGING_PATH
 export DEADLINE_VERSION
 
 # Options for Deadline Repository test component
-export USER_ACCEPTS_SSPL_FOR_RFDK_TESTS=false
+export USER_ACCEPTS_SSPL_FOR_RFDK_TESTS
 
 # Options for Deadline WorkerFleet test component
 export LINUX_DEADLINE_AMI_ID
