@@ -6,7 +6,7 @@
 set -euo pipefail
 
 if [ $EXECUTE_DEADLINE_RENDERQ_TEST_SUITE = true ]; then
-  echo "Deploying test app for Deadline Renderqueue test suite..."
-  npx cdk deploy "*" --require-approval=never
-  echo "Test app deployed."
+  echo "Running Deadline RenderQueue test suite..."
+  npm run test deadline-renderQueue
+  echo "Test suite complete."
 fi
