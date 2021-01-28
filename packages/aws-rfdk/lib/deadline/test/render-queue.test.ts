@@ -1019,14 +1019,7 @@ describe('RenderQueue', () => {
                   },
                 ],
               },
-              '" --render-queue "http://',
-              {
-                'Fn::GetAtt': [
-                  'RenderQueueLB235D35F4',
-                  'DNSName',
-                ],
-              },
-              ':8080" \n' +
+              `" --render-queue "http://renderqueue.${ZONE_NAME}:8080" \n` +
               'rm -f "/tmp/',
               {
                 'Fn::Select': [
@@ -1197,14 +1190,7 @@ describe('RenderQueue', () => {
                   },
                 ],
               },
-              '" --render-queue "http://',
-              {
-                'Fn::GetAtt': [
-                  'RenderQueueLB235D35F4',
-                  'DNSName',
-                ],
-              },
-              ':8080"  2>&1\n' +
+              `" --render-queue "http://renderqueue.${ZONE_NAME}:8080"  2>&1\n` +
               'Remove-Item -Path "C:/temp/',
               {
                 'Fn::Select': [
@@ -1448,14 +1434,7 @@ describe('RenderQueue', () => {
                   },
                 ],
               },
-              '" --render-queue "https://',
-              {
-                'Fn::GetAtt': [
-                  'RenderQueueLB235D35F4',
-                  'DNSName',
-                ],
-              },
-              `:4433" --tls-ca "${CA_ARN}"\n` +
+              `" --render-queue "https://renderqueue.${ZONE_NAME}:4433" --tls-ca "${CA_ARN}"\n` +
               'rm -f "/tmp/',
               {
                 'Fn::Select': [
@@ -1619,14 +1598,7 @@ describe('RenderQueue', () => {
                   },
                 ],
               },
-              '" --render-queue "https://',
-              {
-                'Fn::GetAtt': [
-                  'RenderQueueLB235D35F4',
-                  'DNSName',
-                ],
-              },
-              `:4433" --tls-ca \"${CA_ARN}\" 2>&1\n` +
+              `" --render-queue "https://renderqueue.${ZONE_NAME}:4433" --tls-ca \"${CA_ARN}\" 2>&1\n` +
               'Remove-Item -Path "C:/temp/',
               {
                 'Fn::Select': [
