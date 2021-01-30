@@ -1,7 +1,9 @@
 # Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-import typing
+from typing import (
+    Optional
+)
 from dataclasses import dataclass
 
 from aws_cdk.core import (
@@ -11,19 +13,39 @@ from aws_cdk.core import (
     StackProps
 )
 from aws_cdk.aws_ec2 import (
+    IMachineImage,
+    InstanceClass,
+    InstanceSize,
+    InstanceType,
     SecurityGroup,
-    Vpc,
+    Vpc
 )
 from aws_cdk.aws_iam import (
     ManagedPolicy,
     Role,
-    ServicePrincipal 
+    ServicePrincipal
+)
+from aws_cdk.aws_elasticloadbalancingv2 import (
+    ApplicationProtocol
+)
+from aws_cdk.aws_route53 import (
+    PrivateHostedZone
 )
 from aws_rfdk.deadline import (
+    SEPConfigurationProperties,
     RenderQueue,
+    RenderQueueExternalTLSProps,
+    RenderQueueHostNameProps,
+    RenderQueueTrafficEncryptionProps,
     Repository,
+    SEPConfigurationSetup,
+    SEPSpotFleet,
     Stage,
-    ThinkboxDockerRecipes,
+    ThinkboxDockerRecipes
+)
+from aws_rfdk import (
+    DistinguishedName,
+    X509CertificatePem
 )
 
 
@@ -34,6 +56,10 @@ class SEPStackProps(StackProps):
     """
     # The path to the directory where the staged Deadline Docker recipes are.
     docker_recipes_stage_path: str
+    # The IMachineImage to use for Workers (needs Deadline Client installed).
+    worker_machine_image: IMachineImage
+    # The name of the EC2 keypair to associate with Worker nodes.
+    key_pair_name: Optional[str]
 
 
 class SEPStack(Stack):
@@ -73,46 +99,82 @@ class SEPStack(Stack):
             repository_installation_timeout=Duration.minutes(20)
         )
 
+        # The following code is used to demonstrate how to use the SEPConfigurationSetup if TLS is enabled.
+        host = 'renderqueue'
+        suffix = '.local'
+        # We are calculating the max length we can add to the common name to keep it under the maximum allowed 64
+        # characters and then taking a slice of the stack name so we don't get an error when creating the certificate
+        # with openssl
+        max_length = 64 - len(host) - len('.') - len(suffix) - 1
+        zone_name = Stack.of(self).stack_name[:max_length] + suffix
+
+        # Internal DNS zone for the VPC.
+        dns_zone = PrivateHostedZone(
+            self,
+            'DnsZone',
+            vpc=vpc,
+            zone_name=zone_name
+        )
+
+        # NOTE: this certificate is used by SEPConfigurationSetup construct below.
+        ca_cert = X509CertificatePem(
+            self,
+            'CaCert' + '_SEPConfigurationTest',
+            subject=DistinguishedName(
+                cn='ca.renderfarm' + suffix
+            )
+        )
+
+        server_cert = X509CertificatePem(
+            self,
+            'RenderQueueCertPEM' + '_SEPConfigurationTest',
+            subject=DistinguishedName(
+                cn=host + '.' + zone_name
+            ),
+            signing_certificate=ca_cert
+        )
+
         render_queue = RenderQueue(
             self,
             'RenderQueue',
-            vpc=props.vpc,
+            vpc=vpc,
             version=recipes.version,
             images=recipes.render_queue_images,
             repository=repository,
             # TODO - Evaluate deletion protection for your own needs. This is set to false to
             # cleanly remove everything when this stack is destroyed. If you would like to ensure
             # that this resource is not accidentally deleted, you should set this to true.
-            deletion_protection=False
+            deletion_protection=False,
+            hostname=RenderQueueHostNameProps(
+                hostname=host,
+                zone=dns_zone
+            ),
+            traffic_encryption=RenderQueueTrafficEncryptionProps(
+                external_tls=RenderQueueExternalTLSProps(
+                    rfdk_certificate=server_cert
+                ),
+                internal_protocol=ApplicationProtocol.HTTPS
+            )
+        )
+
+        # Create the IAM Role for the spot fleet.
+        # Note if you already have a worker IAM role in your account you can use it instead.
+        fleet_role = Role(
+            self,
+            'FleetRole',
+            assumed_by=ServicePrincipal('spotfleet.amazonaws.com'),
+            managed_policies=[ManagedPolicy.from_managed_policy_arn(
+                self,
+                'AmazonEC2SpotFleetTaggingRole',
+                'arn:aws:iam::aws:policy/service-role/AmazonEC2SpotFleetTaggingRole'
+            )]
         )
         # Adds the following IAM managed Policies to the Render Queue so it has the necessary permissions
         # to run the Spot Event Plugin and launch a Resource Tracker:
         # * AWSThinkboxDeadlineSpotEventPluginAdminPolicy
         # * AWSThinkboxDeadlineResourceTrackerAdminPolicy
-        render_queue.add_sep_policies()
-
-        # Create the security group that you will assign to your workers
-        worker_security_group = SecurityGroup(
-            self,
-            'SpotSecurityGroup', 
-            vpc=props.vpc,
-            allow_all_outbound=True,
-            security_group_name='DeadlineSpotSecurityGroup',
-        )
-        worker_security_group.connections.allow_to_default_port(
-            render_queue.endpoint
-        )
-        
-        # Create the IAM Role for the Spot Event Plugins workers.
-        # Note: This Role MUST have a roleName that begins with "DeadlineSpot"
-        # Note: If you already have a worker IAM role in your account you can remove this code.
-        worker_iam_role = Role(
-            self,
-            'SpotWorkerRole',
-            assumed_by=ServicePrincipal('ec2.amazonaws.com'),
-            managed_policies= [ManagedPolicy.from_aws_managed_policy_name('AWSThinkboxDeadlineSpotEventPluginWorkerPolicy')],
-            role_name= 'DeadlineSpotWorkerRole',
-        )
+        # Also, adds policies that allow the Render Queue to tag spot fleet requests and to pass the spot fleet role.
+        render_queue.add_sep_policies(True, [fleet_role.role_arn])
 
         # Creates the Resource Tracker Access role.  This role is required to exist in your account so the resource tracker will work properly
         # Note: If you already have a Resource Tracker IAM role in your account you can remove this code.
@@ -121,6 +183,32 @@ class SEPStack(Stack):
             'ResourceTrackerRole',
             assumed_by=ServicePrincipal('lambda.amazonaws.com'),
             managed_policies= [ManagedPolicy.from_aws_managed_policy_name('AWSThinkboxDeadlineResourceTrackerAccessPolicy')],
-            role_name= 'DeadlineResourceTrackerAccessRole',
+            role_name= 'DeadlineResourceTrackerAccessRole'
+        )
+
+        fleet = SEPSpotFleet(
+            self,
+            'SEPSpotFleet',
+            vpc=vpc,
+            render_queue=render_queue,
+            fleet_role=fleet_role,
+            deadline_groups=['group_name'],
+            instance_types=[InstanceType.of(InstanceClass.BURSTABLE3, InstanceSize.LARGE)],
+            worker_machine_image=props.worker_machine_image,
+            target_capacity=1,
+            key_name=props.key_pair_name
+        )
+
+        SEPConfigurationSetup(
+            self,
+            'SEPConfigurationSetup',
+            vpc=vpc,
+            render_queue=render_queue,
+            ca_cert=ca_cert.cert,
+            spot_fleet_options=SEPConfigurationProperties(
+                spot_fleets=[fleet],
+                enable_resource_tracker=True,
+                region=self.region
+            )
         )
 

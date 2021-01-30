@@ -39,7 +39,7 @@ import {
   Fn,
   Expiration,
   IResource,
-  // Lazy,
+  Lazy,
   Names,
   ResourceEnvironment,
   Stack,
@@ -559,11 +559,11 @@ export class SEPSpotFleet extends SEPSpotFleetBase {
       roles: [this.role.roleName],
     });
 
-    const securityGroups = this.securityGroups.map(sg => {
-      return { GroupId: sg.securityGroupId };
-    });
+    const securityGroupsToken = Lazy.any({ produce: () => {
+      return this.securityGroups.map(sg => { return { GroupId: sg.securityGroupId }; });
+    } });
 
-    const userData = Fn.base64(this.userData.render());
+    const userDataToken = Lazy.string({ produce: () => Fn.base64(this.userData.render()) });
 
     const blockDeviceMappings = (props.blockDevices !== undefined ?
       synthesizeBlockDeviceMappings(this, props.blockDevices) : undefined);
@@ -574,19 +574,23 @@ export class SEPSpotFleet extends SEPSpotFleetBase {
     });
     const subnetId = subnetIds.length != 0 ? subnetIds.join(',') : undefined;
 
-    const instanceTags = this.instanceTags.map(tag => {
-      return {
-        Key: tag.key,
-        Value: tag.value,
-      };
-    });
+    const instanceTagsToken = Lazy.any({ produce: () => {
+      return this.instanceTags.map(tag => {
+        return {
+          Key: tag.key,
+          Value: tag.value,
+        };
+      });
+    } });
 
-    const spotFleetRequestTags = this.spotFleetRequestTags.map(tag => {
-      return {
-        Key: tag.key,
-        Value: tag.value,
-      };
-    });
+    const spotFleetRequestTags = Lazy.any({ produce: () => {
+      return this.spotFleetRequestTags.map(tag => {
+        return {
+          Key: tag.key,
+          Value: tag.value,
+        };
+      });
+    } });
 
     let launchSpecifications: any[] = [];
 
@@ -598,15 +602,15 @@ export class SEPSpotFleet extends SEPSpotFleetBase {
         },
         ImageId: this.imageId,
         KeyName: props.keyName,
-        SecurityGroups: securityGroups,
+        SecurityGroups: securityGroupsToken,
         SubnetId: subnetId,
         TagSpecifications: [
           {
             ResourceType: ISpotFleetResourceType.INSTANCE,
-            Tags: instanceTags,
+            Tags: instanceTagsToken,
           },
         ],
-        UserData: userData,
+        UserData: userDataToken,
         InstanceType: instanceType.toString(),
       };
       launchSpecifications.push(launchSpecification);

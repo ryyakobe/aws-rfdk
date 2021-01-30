@@ -123,7 +123,7 @@ export enum SpotEventPluginAwsInstanceStatus {
 /**
  * Spot Event Plugin configuration options
  */
-export interface ISEPConfigurationProperties {
+export interface SEPConfigurationProperties {
   /**
    * The array of Spot Event Plugin spot fleets used to generate the mapping between your groups and spot fleet requests.
    *
@@ -235,8 +235,8 @@ interface SEPGeneralOptions {
   readonly Logging?: string;
   readonly Region?: string;
   readonly IdleShutdown?: number;
-  readonly DeleteInterruptedSlaves?: boolean; // TODO: should we rename slaves here?
-  readonly DeleteTerminatedSlaves?: boolean; // TODO: should we rename slaves here?
+  readonly DeleteInterruptedSlaves?: boolean;
+  readonly DeleteTerminatedSlaves?: boolean;
   readonly StrictHardCap?: boolean;
   readonly StaggerInstances?: number;
   readonly PreJobTaskMode?: string;
@@ -274,7 +274,7 @@ export interface SEPConfigurationSetupProps {
    * The Spot Event Plugin settings.
    * See https://docs.thinkboxsoftware.com/products/deadline/10.1/1_User%20Manual/manual/event-spot.html?highlight=spot%20even%20plugin#event-plugin-configuration-options
    */
-  readonly spotFleetOptions: ISEPConfigurationProperties;
+  readonly spotFleetOptions: SEPConfigurationProperties;
 }
 
 /**
@@ -331,7 +331,22 @@ export class SEPConfigurationSetup extends Construct {
     lamdbaFunc.connections.allowToDefaultPort(props.renderQueue);
     props.caCert?.grantRead(lamdbaFunc.grantPrincipal);
 
-    const combinedPluginConfigs = this.combinedSpotPluginConfigs(props.spotFleetOptions);
+    const combinedPluginConfigs: SEPGeneralOptions = {
+      AWSInstanceStatus: props.spotFleetOptions.awsInstanceStatus,
+      DeleteInterruptedSlaves: props.spotFleetOptions.deleteEC2SpotInterruptedWorkers,
+      DeleteTerminatedSlaves: props.spotFleetOptions.deleteSEPTerminatedWorkers,
+      GroupPools: props.spotFleetOptions.groupPools ? Stack.of(this).toJsonString(props.spotFleetOptions.groupPools) : undefined,
+      IdleShutdown: props.spotFleetOptions.idleShutdown,
+      Logging: props.spotFleetOptions.loggingLevel,
+      PreJobTaskMode: props.spotFleetOptions.preJobTaskMode,
+      Region: props.spotFleetOptions.region ?? Stack.of(this).region,
+      ResourceTracker: props.spotFleetOptions.enableResourceTracker,
+      StaggerInstances: props.spotFleetOptions.maximumInstancesStartedPerCycle,
+      State: props.spotFleetOptions.state,
+      StrictHardCap: props.spotFleetOptions.strictHardCap,
+      UseLocalCredentials: true,
+      NamedProfile: '',
+    };
     const combinedSpotFleetConfigs = this.combinedSpotFleetConfigs(props.spotFleetOptions.spotFleets);
 
     const properties: ISEPConfiguratorResourceProperties = {
@@ -361,13 +376,12 @@ export class SEPConfigurationSetup extends Construct {
     this.node.defaultChild = resource;
   }
 
-  private combinedSpotFleetConfigs(spotFleets?: SEPSpotFleet[]): string | undefined {
+  private combinedSpotFleetConfigs(spotFleets?: SEPSpotFleet[]): object | undefined {
     if (!spotFleets || spotFleets.length === 0) {
       return undefined;
     }
 
     let fullSpotFleetRequestConfiguration: any = {};
-
     spotFleets.map(fleet => {
       fleet.sepSpotFleetRequestConfigurations.map(configuration => {
         for (const [key, value] of Object.entries(configuration)) {
@@ -379,37 +393,6 @@ export class SEPConfigurationSetup extends Construct {
       });
     });
 
-    return JSON.stringify(fullSpotFleetRequestConfiguration); // TODO: Stack.of(this).toJsonString(fullSpotFleetRequestConfiguration);
-  }
-
-  private combinedSpotPluginConfigs(spotFleetOptions: ISEPConfigurationProperties) {
-    const pluginOptions: SEPGeneralOptions = {
-      AWSInstanceStatus: spotFleetOptions.awsInstanceStatus,
-      DeleteInterruptedSlaves: spotFleetOptions.deleteEC2SpotInterruptedWorkers,
-      DeleteTerminatedSlaves: spotFleetOptions.deleteSEPTerminatedWorkers,
-      GroupPools: spotFleetOptions.groupPools ? Stack.of(this).toJsonString(spotFleetOptions.groupPools) : undefined,
-      IdleShutdown: spotFleetOptions.idleShutdown,
-      Logging: spotFleetOptions.loggingLevel,
-      PreJobTaskMode: spotFleetOptions.preJobTaskMode,
-      Region: spotFleetOptions.region ?? Stack.of(this).region,
-      ResourceTracker: spotFleetOptions.enableResourceTracker,
-      StaggerInstances: spotFleetOptions.maximumInstancesStartedPerCycle,
-      State: spotFleetOptions.state,
-      StrictHardCap: spotFleetOptions.strictHardCap,
-      UseLocalCredentials: true,
-      NamedProfile: '',
-    };
-
-    let configs = [];
-
-    for (const [key, value] of Object.entries(pluginOptions)) {
-      if (value !== undefined) {
-        configs.push({
-          Key: key,
-          Value: value,
-        });
-      }
-    }
-    return configs;
+    return fullSpotFleetRequestConfiguration;
   }
 }

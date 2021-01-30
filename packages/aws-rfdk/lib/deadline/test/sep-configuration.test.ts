@@ -104,7 +104,7 @@ describe('SEPConfigurationSetup', () => {
       renderQueue: renderQueue,
       spotFleetOptions: {
         spotFleets: [
-          fleet, // TODO: Typescript is complaining
+          fleet,
         ],
         groupPools,
       },

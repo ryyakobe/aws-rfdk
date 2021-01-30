@@ -496,12 +496,6 @@ export class RenderQueue extends RenderQueueBase implements IGrantable {
           },
         },
       }));
-      this.taskDefinition.taskRole.addToPrincipalPolicy(new PolicyStatement({
-        actions: [
-          'iam:GetRole',
-        ],
-        resources: iamFleetRoleArns,
-      }));
     }
   }
 
