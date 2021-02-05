@@ -58,6 +58,7 @@ import {
   ECSConnectOptions,
   InstanceConnectOptions,
   IRepository,
+  IVersion,
   RenderQueueProps,
 } from '.';
 
@@ -198,6 +199,16 @@ export class RenderQueue extends RenderQueueBase implements IGrantable {
   public readonly asg: AutoScalingGroup;
 
   /**
+   * The version of Deadline that the RenderQueue uses
+   */
+  public readonly version: IVersion;
+
+  /**
+   * Whether SEP policies have been added
+   */
+  private addedSEPPolicies: boolean = false;
+
+  /**
    * The log group where the RCS container will log to
    */
   private readonly logGroup: ILogGroup;
@@ -266,6 +277,8 @@ export class RenderQueue extends RenderQueueBase implements IGrantable {
     } else {
       externalProtocol = ApplicationProtocol.HTTP;
     }
+
+    this.version = props.version;
 
     const internalProtocol = props.trafficEncryption?.internalProtocol ?? ApplicationProtocol.HTTPS;
 
@@ -466,36 +479,18 @@ export class RenderQueue extends RenderQueueBase implements IGrantable {
    * See: https://docs.thinkboxsoftware.com/products/deadline/10.1/1_User%20Manual/manual/event-spot.html for additonal information.
    *
    * @param includeResourceTracker Whether or not the Resource tracker admin policy should also be added (Default: True)
-   * @param iamFleetRoleArns Allows render queue to use custom spot fleet roles (Default: only aws-ec2-spot-fleet-tagging-role is allowed)
    */
-  public addSEPPolicies(includeResourceTracker: boolean = true, iamFleetRoleArns: string[] | undefined = undefined): void {
-    const sepPolicy = ManagedPolicy.fromAwsManagedPolicyName('AWSThinkboxDeadlineSpotEventPluginAdminPolicy');
-    this.taskDefinition.taskRole.addManagedPolicy(sepPolicy);
+  public addSEPPolicies(includeResourceTracker: boolean = true): void {
+    if (!this.addedSEPPolicies) {
+      const sepPolicy = ManagedPolicy.fromAwsManagedPolicyName('AWSThinkboxDeadlineSpotEventPluginAdminPolicy');
+      this.taskDefinition.taskRole.addManagedPolicy(sepPolicy);
 
-    if (includeResourceTracker) {
-      const rtPolicy = ManagedPolicy.fromAwsManagedPolicyName('AWSThinkboxDeadlineResourceTrackerAdminPolicy');
-      this.taskDefinition.taskRole.addManagedPolicy(rtPolicy);
-    }
+      if (includeResourceTracker) {
+        const rtPolicy = ManagedPolicy.fromAwsManagedPolicyName('AWSThinkboxDeadlineResourceTrackerAdminPolicy');
+        this.taskDefinition.taskRole.addManagedPolicy(rtPolicy);
+      }
 
-    this.taskDefinition.taskRole.addToPrincipalPolicy(new PolicyStatement({
-      actions: [
-        'ec2:CreateTags',
-      ],
-      resources: ['arn:aws:ec2:*:*:spot-fleet-request/*'],
-    }));
-
-    if (iamFleetRoleArns) {
-      this.taskDefinition.taskRole.addToPrincipalPolicy(new PolicyStatement({
-        actions: [
-          'iam:PassRole',
-        ],
-        resources: iamFleetRoleArns,
-        conditions: {
-          StringLike: {
-            'iam:PassedToService': 'ec2.amazonaws.com',
-          },
-        },
-      }));
+      this.addedSEPPolicies = true;
     }
   }
 

@@ -49,6 +49,7 @@ import {
   DatabaseConnection,
   IVersion,
   Repository,
+  Version,
 } from '../lib';
 import {
   REPO_DC_ASSET,
@@ -70,19 +71,22 @@ beforeEach(() => {
   app = new App();
   stack = new Stack(app, 'Stack');
   vpc = new Vpc(stack, 'VPC');
-  version = {
-    majorVersion: 10,
-    minorVersion: 1,
-    releaseVersion: 9,
-    linuxInstallers: {
-      patchVersion: 2,
+
+  class MockVersion extends Version implements IVersion {
+    readonly linuxInstallers = {
+      patchVersion: 0,
       repository: {
         objectKey: 'testInstaller',
         s3Bucket: new Bucket(stack, 'InstallerBucket'),
       },
-    },
-    linuxFullVersionString: () => '10.1.9.2',
-  };
+    }
+
+    public linuxFullVersionString() {
+      return this.toString();
+    }
+  }
+
+  version = new MockVersion([10,1,9,2]);
 });
 
 test('can create two repositories', () => {
