@@ -198,6 +198,8 @@ describe('RenderQueue', () => {
       DependsOn: arrayWith(
         'RenderQueueCommonLBPublicListener935F5635',
         'RenderQueueCommonRCSTask2A4D5EA5',
+        'RenderQueueCommonAlbEc2ServicePatternService42BEFF4C',
+        'RenderQueueCommonWaitForStableServiceDB53E266',
       ),
     }, ResourcePart.CompleteDefinition));
   });
@@ -2156,9 +2158,9 @@ describe('RenderQueue', () => {
       resourceTypeCounts: {
         'AWS::ECS::Cluster': 1,
         'AWS::EC2::SecurityGroup': 2,
-        'AWS::IAM::Role': 7,
+        'AWS::IAM::Role': 8,
         'AWS::AutoScaling::AutoScalingGroup': 1,
-        'AWS::Lambda::Function': 3,
+        'AWS::Lambda::Function': 4,
         'AWS::SNS::Topic': 1,
         'AWS::ECS::TaskDefinition': 1,
         'AWS::DynamoDB::Table': 2,
@@ -2172,7 +2174,10 @@ describe('RenderQueue', () => {
 
   describe('SEP Policies', () => {
     test('with resource tracker', () => {
+      // WHEN
       renderQueueCommon.addSEPPolicies();
+
+      // THEN
       expectCDK(stack).to(countResourcesLike('AWS::IAM::Role', 1, {
         ManagedPolicyArns: arrayWith(
           {
@@ -2204,7 +2209,10 @@ describe('RenderQueue', () => {
     });
 
     test('no resource tracker', () => {
+      // WHEN
       renderQueueCommon.addSEPPolicies(false);
+
+      // THEN
       expectCDK(stack).to(haveResourceLike('AWS::IAM::Role', {
         ManagedPolicyArns: arrayWith(
           {
@@ -2238,6 +2246,14 @@ describe('RenderQueue', () => {
         ),
       }));
     });
+  });
 
+  test('creates WaitForStableService by default', () => {
+    // THEN
+    expectCDK(stack).to(haveResourceLike('Custom::RFDK_WaitForStableService', {
+      cluster: stack.resolve(renderQueueCommon.cluster.clusterArn),
+      // eslint-disable-next-line dot-notation
+      services: [stack.resolve(renderQueueCommon['pattern'].service.serviceArn)],
+    }));
   });
 });
